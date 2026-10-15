@@ -1,0 +1,32 @@
+stages: [test, sync]
+
+test:
+  stage: test
+  image: python:3.12-slim
+  before_script:
+    - pip install -r requirements.txt
+  script:
+    - python -m unittest discover -s tests -t .
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+    - if: '$CI_PIPELINE_SOURCE == "push"'
+
+# Läuft per Pipeline-Schedule (CI/CD -> Schedules) oder manuell über "Run pipeline".
+# Der Zustand (state.json) wird als Artifact aufbewahrt; der nächste Lauf holt ihn
+# vom letzten erfolgreichen Lauf dieses Jobs (siehe servicehealth_sync/state.py).
+sync-service-health:
+  stage: sync
+  image: python:3.12-slim
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "schedule"'
+    - if: '$CI_PIPELINE_SOURCE == "web"'
+  resource_group: servicehealth-sync   # verhindert überlappende Läufe
+  timeout: 10m
+  before_script:
+    - pip install -r requirements.txt
+  script:
+    - python -m servicehealth_sync
+  artifacts:
+    paths:
+      - state.json
+    expire_in: 90 days

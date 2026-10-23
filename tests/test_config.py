@@ -6,7 +6,6 @@ from servicehealth_sync.config import Config, ConfigError
 
 BASE = {
     "AZURE_TENANT_ID": "t", "AZURE_CLIENT_ID": "c", "AZURE_CLIENT_SECRET": "s",
-    "AZURE_SUBSCRIPTION_IDS": "sub1, sub2;sub3",
     "SERVICENOW_INSTANCE": "https://beispiel.service-now.com/",
     "SERVICENOW_SOURCE": "quelle", "SERVICENOW_CONNECTOR_SYS_ID": "abc",
     "SERVICENOW_TOKEN": "tok",
@@ -20,10 +19,16 @@ class ConfigTests(unittest.TestCase):
 
     def test_loads_and_normalizes(self):
         cfg = self.load()
-        self.assertEqual(cfg.subscription_ids, ("sub1", "sub2", "sub3"))
+        self.assertEqual(cfg.subscription_ids, ())  # leer = alle Subscriptions
+        self.assertEqual(cfg.exclude_subscription_ids, ())
         self.assertEqual(cfg.sn_instance, "beispiel.service-now.com")
         self.assertEqual(cfg.lookback_days, 30)
         self.assertFalse(cfg.dry_run)
+
+    def test_optional_subscription_lists(self):
+        cfg = self.load(AZURE_SUBSCRIPTION_IDS="sub1, sub2;sub3", AZURE_EXCLUDE_SUBSCRIPTION_IDS="x1")
+        self.assertEqual(cfg.subscription_ids, ("sub1", "sub2", "sub3"))
+        self.assertEqual(cfg.exclude_subscription_ids, ("x1",))
 
     def test_no_username_required(self):
         self.assertEqual(self.load().sn_token, "tok")

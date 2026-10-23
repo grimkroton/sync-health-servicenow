@@ -23,6 +23,34 @@ class State:
         data = data or {}
         self.last_run: datetime | None = _parse(data.get("last_run"))
         self.events: dict[str, dict[str, str]] = dict(data.get("events") or {})
+        # Subscriptions, die schon einmal vollständig verarbeitet wurden
+        self.subscriptions: set[str] = {x.lower() for x in data.get("subscriptions") or []}
+        # Offene Advisories mit Enddatum: Schlüssel -> {"at", "last_update", "payload"}.
+        # Damit lässt sich ein Alert zum Enddatum schließen, auch wenn Azure das Event nicht mehr liefert.
+        self.expiring: dict[str, dict[str, Any]] = {k: dict(v) for k, v in (data.get("expiring") or {}).items()}
+        # False in älteren Zustandsdateien: einmal das volle Zeitfenster neu prüfen
+        self.expiry_tracking: bool = bool(data.get("expiry_tracking", False))
+
+    def is_known_subscription(self, subscription_id: str) -> bool:
+        return subscription_id.lower() in self.subscriptions
+
+    def mark_subscription(self, subscription_id: str) -> None:
+        self.subscriptions.add(subscription_id.lower())
+
+    def track_expiry(self, key: str, at: datetime, last_update: str, payload: dict[str, Any]) -> None:
+        self.expiring[key] = {"at": at.isoformat(), "last_update": last_update, "payload": payload}
+
+    def clear_expiry(self, key: str) -> None:
+        self.expiring.pop(key, None)
+
+    def due_expiries(self, now: datetime) -> list[tuple[str, dict[str, Any]]]:
+        """Offene Advisories, deren Enddatum erreicht ist."""
+        due = []
+        for key, entry in self.expiring.items():
+            at = _parse(entry.get("at"))
+            if at is not None and at <= now:
+                due.append((key, entry))
+        return sorted(due, key=lambda item: item[0])
 
     def needs_send(self, key: str, status: str, last_update: str) -> bool:
         """True, wenn das Event neu ist oder sich Status bzw. Aktualisierungszeit geändert haben."""
@@ -35,6 +63,9 @@ class State:
     def to_dict(self) -> dict[str, Any]:
         return {
             "last_run": self.last_run.isoformat() if self.last_run else None,
+            "subscriptions": sorted(self.subscriptions),
+            "expiry_tracking": self.expiry_tracking,
+            "expiring": self.expiring,
             "events": self.events,
         }
 

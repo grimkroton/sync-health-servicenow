@@ -14,6 +14,7 @@ from urllib3.util.retry import Retry
 log = logging.getLogger(__name__)
 
 API_VERSION = "2024-02-01"
+SUBSCRIPTIONS_API_VERSION = "2022-12-01"
 SCOPE = "https://management.azure.com/.default"
 
 
@@ -86,6 +87,35 @@ class AzureClient:
         self._token = data["access_token"]
         self._token_expires = time.time() + max(int(data.get("expires_in", 3600)) - 120, 60)
         return self._token
+
+    def list_subscriptions(self) -> list[dict[str, str]]:
+        """Alle Subscriptions, die der Service Principal sehen darf (Rolle Reader o. ä.)."""
+        result: list[dict[str, str]] = []
+        url: str | None = f"{self.management_base}/subscriptions"
+        params: dict[str, str] | None = {"api-version": SUBSCRIPTIONS_API_VERSION}
+        while url:
+            try:
+                response = self.session.get(
+                    url,
+                    params=params,
+                    headers={"Authorization": f"Bearer {self._get_token()}"},
+                    timeout=self.timeout,
+                )
+            except requests.RequestException as exc:
+                raise AzureError(f"Abruf der Subscriptions fehlgeschlagen: {exc}") from exc
+            if not response.ok:
+                body = response.text.strip().replace("\n", " ")[:300]
+                raise AzureError(f"Abruf der Subscriptions fehlgeschlagen (HTTP {response.status_code}): {body}")
+            data = response.json()
+            for item in data.get("value") or []:
+                result.append({
+                    "subscriptionId": item.get("subscriptionId", ""),
+                    "displayName": item.get("displayName", ""),
+                    "state": item.get("state", ""),
+                })
+            url = data.get("nextLink")
+            params = None
+        return result
 
     def list_events(self, subscription_id: str, since: datetime) -> Iterator[dict[str, Any]]:
         """Liefert alle Service Health Events der Subscription, seit `since` aktualisiert."""

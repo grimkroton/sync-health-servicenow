@@ -23,14 +23,37 @@ class ServiceNowClientTests(unittest.TestCase):
             retries=retries, backoff_factor=0,
         )
 
-    def test_sends_json_with_bearer_token_and_query(self):
+    def test_sends_json_with_apikey_header_and_query(self):
         self.start([])
         self.client().send({"hallo": "welt"})
         req = self.srv.received[0]
         self.assertEqual(req["path"], "/api/sn_em_connector/em/inbound_event")
         self.assertEqual(req["query"], {"source": "quelle", "sys_id": "abc123", "custom": "true"})
-        self.assertEqual(req["headers"]["authorization"], "Bearer geheim")
+        self.assertEqual(req["headers"]["x-sn-apikey"], "geheim")
+        self.assertNotIn("authorization", req["headers"])
         self.assertEqual(json.loads(req["raw"]), {"hallo": "welt"})
+
+    def test_send_raw_uses_given_content_type(self):
+        self.start([])
+        self.client().send_raw(b'{"a": 1}', "text/plain")
+        req = self.srv.received[0]
+        self.assertEqual(req["headers"]["content-type"], "text/plain")
+        self.assertEqual(req["raw"], b'{"a": 1}')
+        self.assertEqual(req["headers"]["x-sn-apikey"], "geheim")
+
+    def test_success_logs_status_and_body(self):
+        self.start([])
+        with self.assertLogs("servicehealth_sync.servicenow_client", level="INFO") as logs:
+            self.client().send({"a": 1})
+        self.assertIn("HTTP 200", logs.output[0])
+        self.assertIn("ok", logs.output[0])
+
+    def test_redirect_is_an_error(self):
+        self.start([302])
+        with self.assertRaises(ServiceNowError) as ctx:
+            self.client().send({"a": 1})
+        self.assertIn("302", str(ctx.exception))
+        self.assertEqual(len(self.srv.received), 1)
 
     def test_retries_on_503_then_succeeds(self):
         self.start([503, 503, 200])
@@ -49,6 +72,12 @@ class ServiceNowClientTests(unittest.TestCase):
         with self.assertRaises(ServiceNowError) as ctx:
             self.client().send({"a": 1})
         self.assertIn("401", str(ctx.exception))
+        self.assertEqual(len(self.srv.received), 1)
+
+    def test_http_500_is_not_retried(self):
+        self.start([500])
+        with self.assertRaises(ServiceNowError):
+            self.client().send({"a": 1})
         self.assertEqual(len(self.srv.received), 1)
 
     def test_connection_error_raises_servicenow_error(self):

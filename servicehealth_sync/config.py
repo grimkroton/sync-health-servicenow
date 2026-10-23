@@ -34,6 +34,11 @@ def _bool(name: str, default: bool = False) -> bool:
     return raw in {"1", "true", "yes", "ja", "on"}
 
 
+def _id_list(name: str) -> tuple[str, ...]:
+    raw = os.environ.get(name, "")
+    return tuple(x.strip() for x in raw.replace(";", ",").split(",") if x.strip())
+
+
 def _hostname(value: str) -> str:
     """Akzeptiert 'instanz.service-now.com' ebenso wie 'https://instanz.service-now.com/'."""
     value = value.strip()
@@ -49,8 +54,7 @@ class Config:
     tenant_id: str
     client_id: str
     client_secret: str
-    subscription_ids: tuple[str, ...]
-    # ServiceNow (Authentifizierung per Bearer Token)
+    # ServiceNow (Authentifizierung per API-Key im Header x-sn-apikey)
     sn_instance: str
     sn_source: str
     sn_connector_sys_id: str
@@ -64,22 +68,17 @@ class Config:
     alert_rule_name: str = "ServiceHealth-Pull"
     dry_run: bool = False
     state_file: str = "state.json"
+    # Optional: leer = alle Subscriptions, die der Service Principal sehen darf
+    subscription_ids: tuple[str, ...] = ()
+    exclude_subscription_ids: tuple[str, ...] = ()
 
     @classmethod
     def from_env(cls) -> "Config":
-        subs = tuple(
-            s.strip()
-            for s in _required("AZURE_SUBSCRIPTION_IDS").replace(";", ",").split(",")
-            if s.strip()
-        )
-        if not subs:
-            raise ConfigError("AZURE_SUBSCRIPTION_IDS enthält keine Subscription-ID")
         dry_run = _bool("DRY_RUN")
         return cls(
             tenant_id=_required("AZURE_TENANT_ID"),
             client_id=_required("AZURE_CLIENT_ID"),
             client_secret=_required("AZURE_CLIENT_SECRET"),
-            subscription_ids=subs,
             sn_instance=_hostname(_required("SERVICENOW_INSTANCE")),
             sn_source=_required("SERVICENOW_SOURCE"),
             sn_connector_sys_id=_required("SERVICENOW_CONNECTOR_SYS_ID"),
@@ -92,4 +91,6 @@ class Config:
             alert_rule_name=os.environ.get("ALERT_RULE_NAME", "").strip() or "ServiceHealth-Pull",
             dry_run=dry_run,
             state_file=os.environ.get("STATE_FILE", "").strip() or "state.json",
+            subscription_ids=_id_list("AZURE_SUBSCRIPTION_IDS"),
+            exclude_subscription_ids=_id_list("AZURE_EXCLUDE_SUBSCRIPTION_IDS"),
         )

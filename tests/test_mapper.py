@@ -123,12 +123,51 @@ class MapperTests(unittest.TestCase):
     def test_payload_is_small(self):
         names = [f"Region {i}" for i in range(80)]
         event = make_event(impact=[{"impactedService": "ARM", "impactedRegions": [region(n, [SUB]) for n in names]}])
-        self.assertLess(len(json.dumps(map_it(event))), 8000)
+        self.assertLess(len(json.dumps(map_it(event))), 20000)
 
     def test_missing_optional_fields_do_not_crash(self):
         alert = map_event({"name": "ABC-123", "properties": {}}, SUB, alert_rule="r")
         self.assertEqual(alert["data"]["essentials"]["monitorCondition"], "Fired")
         self.assertEqual(alert["data"]["alertContext"]["properties"]["region"], "")
+
+    def test_full_field_set_like_a_real_alert(self):
+        ctx = map_it(make_event())["data"]["alertContext"]
+        for key in ("authorization", "channels", "claims", "caller", "correlationId", "eventSource",
+                    "eventTimestamp", "eventDataId", "level", "operationName", "operationId", "properties",
+                    "status", "subStatus", "submissionTimestamp", "resourceType"):
+            self.assertIn(key, ctx)
+        props = ctx["properties"]
+        for key in ("title", "service", "region", "communication", "incidentType", "trackingId",
+                    "impactStartTime", "impactMitigationTime", "impactedServices", "impactedServicesTableRows",
+                    "defaultLanguageTitle", "defaultLanguageContent", "stage", "communicationId",
+                    "isHIR", "IsSynthetic", "impactType", "version"):
+            self.assertIn(key, props)
+        self.assertEqual(ctx["operationName"], "Microsoft.ServiceHealth/actionrequired/action")
+        self.assertEqual(props["isHIR"], "false")
+
+    def test_impacted_services_is_json_string_in_azure_format(self):
+        props = map_it(make_event())["data"]["alertContext"]["properties"]
+        parsed = json.loads(props["impactedServices"])
+        self.assertEqual(parsed[0]["ServiceName"], "Azure Resource Manager")
+        self.assertEqual([r["RegionName"] for r in parsed[0]["ImpactedRegions"]],
+                         ["Australia Central", "Global", "West Europe"])
+
+    def test_communication_keeps_html_unless_too_long(self):
+        props = map_it(make_event())["data"]["alertContext"]["properties"]
+        self.assertTrue(props["communication"].startswith("<p>"))
+        short = map_it(make_event(), max_html_length=200)["data"]["alertContext"]["properties"]["communication"]
+        self.assertLessEqual(len(short), 200 + 20)
+        self.assertTrue(short.startswith("<p>") and short.endswith("</p>"))
+        self.assertNotIn("<em>", short)
+
+    def test_ids_are_stable(self):
+        a = map_it(make_event())["data"]["alertContext"]
+        b = map_it(make_event())["data"]["alertContext"]
+        self.assertEqual(a["correlationId"], b["correlationId"])
+        self.assertEqual(a["eventDataId"], b["eventDataId"])
+        c = map_it(make_event(lastUpdateTime="2026-10-01T00:00:00Z"))["data"]["alertContext"]
+        self.assertEqual(a["correlationId"], c["correlationId"])
+        self.assertNotEqual(a["eventDataId"], c["eventDataId"])
 
     def test_helpers(self):
         self.assertEqual(strip_html(None), "")

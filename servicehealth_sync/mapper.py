@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import html as html_lib
+import json
+import uuid
 from html.parser import HTMLParser
 from typing import Any, Iterable
 
@@ -117,6 +120,52 @@ def _impacted(props: dict[str, Any], subscription_id: str) -> tuple[list[str], l
     return _unique(services), _unique(regions)
 
 
+_OPERATIONS = {
+    "Incident": "incident",
+    "Maintenance": "maintenance",
+    "Informational": "informational",
+    "ActionRequired": "actionrequired",
+    "Security": "security",
+}
+
+
+def _stable_id(*parts: str) -> str:
+    """Stabile GUID aus Subscription, Tracking-ID und Aktualisierungszeit."""
+    return str(uuid.uuid5(uuid.NAMESPACE_URL, "|".join(parts)))
+
+
+def _impacted_services_json(props: dict[str, Any], subscription_id: str) -> str:
+    """Format wie im echten Alert: [{"ImpactedRegions":[{"RegionName":"…"}],"ServiceName":"…"}]"""
+    result = []
+    for item in props.get("impact") or []:
+        names = _unique(
+            r.get("impactedRegion")
+            for r in item.get("impactedRegions") or []
+            if not r.get("impactedSubscriptions")
+            or subscription_id.lower() in [x.lower() for x in r["impactedSubscriptions"]]
+        )
+        result.append({
+            "ImpactedRegions": [{"RegionName": n} for n in names],
+            "ServiceName": item.get("impactedService") or "",
+        })
+    return json.dumps(result, ensure_ascii=False, separators=(",", ":"))
+
+
+def _impacted_table_rows(services: list[str], regions: list[str], max_regions: int) -> str:
+    cell = "style='border: 1px solid #ddd; padding: 4px;'"
+    return (
+        f"<tr><td {cell}>{html_lib.escape(', '.join(services))}</td>"
+        f"<td {cell}>{html_lib.escape(region_summary(regions, max_regions))}</td></tr>"
+    )
+
+
+def _communication(raw_html: str | None, plain: str, max_html_length: int) -> str:
+    """Original-HTML der Meldung; zu lange Texte werden als gekürzter Klartext-Absatz geliefert."""
+    if raw_html and len(raw_html) <= max_html_length:
+        return raw_html
+    return f"<p>{html_lib.escape(truncate(plain, max_html_length // 2))}</p>"
+
+
 def map_event(
     event: dict[str, Any],
     subscription_id: str,
@@ -124,6 +173,7 @@ def map_event(
     alert_rule: str,
     max_text_length: int = 3000,
     max_regions: int = 10,
+    max_html_length: int = 8000,
 ) -> dict[str, Any]:
     props = event.get("properties") or {}
     tracking_id = event.get("name") or ""
@@ -151,25 +201,51 @@ def map_event(
     if resolved:
         essentials["resolvedDateTime"] = props.get("impactMitigationTime") or props.get("lastUpdateTime")
 
+    inc_type = incident_type(props.get("eventType"), title)
+    last_update = props.get("lastUpdateTime") or props.get("impactStartTime")
+    ident = _stable_id(subscription_id, tracking_id, str(last_update))
+    raw_html = props.get("description") or props.get("summary")
+
     return {
         "schemaId": SCHEMA_ID,
         "data": {
             "essentials": essentials,
             "alertContext": {
+                "authorization": None,
+                "channels": "Admin, Operation",
+                "claims": None,
+                "caller": None,
+                "correlationId": _stable_id(subscription_id, tracking_id),
                 "eventSource": "ServiceHealth",
+                "eventTimestamp": last_update,
+                "eventDataId": ident,
                 "level": level,
-                "status": status,
+                "operationName": f"Microsoft.ServiceHealth/{_OPERATIONS.get(inc_type, 'incident')}/action",
+                "operationId": ident,
                 "properties": {
                     "title": title,
                     "service": ", ".join(services),
                     "region": region_summary(regions, max_regions),
-                    "incidentType": incident_type(props.get("eventType"), title),
+                    "communication": _communication(raw_html, content, max_html_length),
+                    "incidentType": inc_type,
                     "trackingId": tracking_id,
                     "impactStartTime": props.get("impactStartTime"),
                     "impactMitigationTime": props.get("impactMitigationTime"),
-                    "stage": status,
+                    "impactedServices": _impacted_services_json(props, subscription_id),
+                    "impactedServicesTableRows": _impacted_table_rows(services, regions, max_regions),
+                    "defaultLanguageTitle": title,
                     "defaultLanguageContent": truncate(content, max_text_length),
+                    "stage": status,
+                    "communicationId": str(props.get("externalIncidentId") or ""),
+                    "isHIR": str(bool(props.get("isHIR", False))).lower(),
+                    "IsSynthetic": "False",
+                    "impactType": "SubscriptionList",
+                    "version": "0.1.1",
                 },
+                "status": status,
+                "subStatus": None,
+                "submissionTimestamp": last_update,
+                "resourceType": None,
             },
         },
     }

@@ -42,6 +42,35 @@ class AzureClientTests(unittest.TestCase):
         # Token wird wiederverwendet: genau ein Token-Request
         self.assertEqual(sum(r["path"].endswith("/token") for r in self.srv.received), 1)
 
+    def test_list_subscriptions_with_paging(self):
+        def route(req, n):
+            if req["path"].endswith("/token"):
+                return 200, {"access_token": "tok", "expires_in": 3600}
+            if "page2" in req["query"]:
+                return 200, {"value": [{"subscriptionId": "s2", "displayName": "Zwei", "state": "Disabled"}]}
+            return 200, {
+                "value": [{"subscriptionId": "s1", "displayName": "Eins", "state": "Enabled"}],
+                "nextLink": f"{self.srv.base}/subscriptions?page2=1",
+            }
+
+        client = self.start(route)
+        subs = client.list_subscriptions()
+        self.assertEqual([s["subscriptionId"] for s in subs], ["s1", "s2"])
+        self.assertEqual(subs[1]["state"], "Disabled")
+        req = self.srv.received[1]
+        self.assertEqual(req["path"], "/subscriptions")
+        self.assertEqual(req["query"]["api-version"], "2022-12-01")
+        self.assertEqual(req["headers"]["authorization"], "Bearer tok")
+
+    def test_list_subscriptions_error(self):
+        def route(req, n):
+            if req["path"].endswith("/token"):
+                return 200, {"access_token": "tok", "expires_in": 3600}
+            return 403, {"error": "forbidden"}
+
+        with self.assertRaises(AzureError):
+            self.start(route).list_subscriptions()
+
     def test_token_error_contains_reason_but_not_secret(self):
         def route(req, n):
             return 401, {"error": "invalid_client", "error_description": "AADSTS7000215: Invalid client secret provided."}

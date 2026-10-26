@@ -37,7 +37,7 @@ class EventMapperTests(unittest.TestCase):
         rec = record()
         self.assertEqual(set(rec), REQUIRED)
         self.assertEqual(rec["source"], "ServiceHealth")  # eventSource
-        self.assertEqual(rec["event_class"], "LHM Azure Service Health")
+        self.assertEqual(rec["event_class"], "Azure Service Health")
         self.assertEqual(rec["node"], SUB)
         self.assertEqual(rec["resource"], "Azure Resource Manager")  # impactedService
         self.assertEqual(rec["metric_name"], "")

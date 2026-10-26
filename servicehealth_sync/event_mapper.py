@@ -15,7 +15,7 @@ from .mapper import strip_html, truncate
 
 # Diese Werte lassen sich hier zentral anpassen (z. B. passend zu den Event-Regeln in ServiceNow).
 EVENT_SOURCE_FALLBACK = "ServiceHealth"  # falls die API keine eventSource liefert
-EVENT_CLASS = "LHM Azure Service Health"
+EVENT_CLASS = "Azure Service Health"
 
 # ServiceNow: 0 = Clear, 1 = Critical, 2 = Major, 3 = Minor, 4 = Warning, 5 = OK
 # Die Severity kommt aus dem Azure-Level des Events. Ein geschlossenes Event bekommt immer 0.

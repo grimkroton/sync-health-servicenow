@@ -25,7 +25,7 @@ Ein Request enthält genau ein Event (flaches JSON-Objekt, alle Werte sind Strin
 | ServiceNow-Feld | Quelle in der Azure-API |
 |---|---|
 | `source` | `properties.eventSource` (z. B. `ServiceHealth`) |
-| `event_class` | konstant `LHM Azure Service Health` |
+| `event_class` | konstant `Azure Service Health` |
 | `node` | `impact[].impactedRegions[].impactedSubscriptions[]`: **pro Subscription ein eigenes Event** |
 | `resource` | `impactedService` (bei mehreren Diensten kommagetrennt, nur die der jeweiligen Subscription) |
 | `metric_name` | leer |

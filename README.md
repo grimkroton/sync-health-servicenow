@@ -72,8 +72,8 @@ Produktionsinstanz über den Variablen-Scope trennen:
 
 | Branch | Job | Environment | Schedule-Ziel-Branch |
 |---|---|---|---|
-| `main` | `sync-service-health` | `test` | `main` |
-| `production` | `sync-service-health-production` | `production` | `production` |
+| `main` | `sync-service-health` | `Test` | `main` |
+| `production` | `sync-service-health-production` | `Production` | `production` |
 
 Der Sync läuft nur per Pipeline-Schedule oder manuell (*Run pipeline*) auf diesen beiden Branches. Der Test-Job
 (`unittest`) läuft bei jedem Push und Merge Request.
@@ -81,7 +81,7 @@ Der Sync läuft nur per Pipeline-Schedule oder manuell (*Run pipeline*) auf dies
 Einrichtung in GitLab:
 1. Branch `production` anlegen (z. B. von `main`) und als *protected* schützen.
 2. Unter *Settings → CI/CD → Variables* die ServiceNow-Variablen je Umgebung anlegen, jeweils mit *Environment scope*
-   `test` bzw. `production`: `SERVICENOW_INSTANCE`, `SERVICENOW_SOURCE`, `SERVICENOW_CONNECTOR_SYS_ID`, `SERVICENOW_TOKEN`.
+   `Test` bzw. `Production` (Groß-/Kleinschreibung muss exakt stimmen): `SERVICENOW_INSTANCE`, `SERVICENOW_SOURCE`, `SERVICENOW_CONNECTOR_SYS_ID`, `SERVICENOW_TOKEN`.
    Die Produktionswerte zusätzlich als *Protected* und *Masked* markieren.
 3. Gemeinsame Variablen (z. B. `AZURE_*`) mit dem Scope `*` (alle Umgebungen) lassen.
    Soll auch Azure getrennt sein, diese ebenfalls je Umgebung anlegen.

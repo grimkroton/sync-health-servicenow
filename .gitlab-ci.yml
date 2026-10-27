@@ -28,24 +28,24 @@ test:
       - state.json
     expire_in: 90 days
 
-# Branch "main" -> Environment "test".
+# Branch "main" -> Environment "Test".
 # Läuft per Pipeline-Schedule (CI/CD -> Schedules, Ziel-Branch main) oder manuell über "Run pipeline".
 # Der Jobname bleibt unverändert, damit der bisherige Zustand aus main weiter gefunden wird.
 sync-service-health:
   extends: .sync-service-health
   environment:
-    name: test
+    name: Test   # Groß-/Kleinschreibung muss exakt dem Environment scope der CI/CD-Variablen entsprechen
   resource_group: servicehealth-sync-test   # verhindert überlappende Läufe
   rules:
     - if: '$CI_COMMIT_BRANCH == "main" && $CI_PIPELINE_SOURCE == "schedule"'
     - if: '$CI_COMMIT_BRANCH == "main" && $CI_PIPELINE_SOURCE == "web"'
 
-# Branch "production" -> Environment "production".
+# Branch "production" -> Environment "Production".
 # Schedule mit Ziel-Branch production anlegen.
 sync-service-health-production:
   extends: .sync-service-health
   environment:
-    name: production
+    name: Production
   resource_group: servicehealth-sync-production
   rules:
     - if: '$CI_COMMIT_BRANCH == "production" && $CI_PIPELINE_SOURCE == "schedule"'

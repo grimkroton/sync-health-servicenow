@@ -11,16 +11,13 @@ test:
     - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
     - if: '$CI_PIPELINE_SOURCE == "push"'
 
-# Läuft per Pipeline-Schedule (CI/CD -> Schedules) oder manuell über "Run pipeline".
+# Gemeinsame Vorlage für den Abruf und Versand.
 # Der Zustand (state.json) wird als Artifact aufbewahrt; der nächste Lauf holt ihn
-# vom letzten erfolgreichen Lauf dieses Jobs (siehe servicehealth_sync/state.py).
-sync-service-health:
+# vom letzten erfolgreichen Lauf desselben Jobs auf demselben Branch (siehe servicehealth_sync/state.py).
+# Test und Produktion haben dadurch getrennte Zustände.
+.sync-service-health:
   stage: sync
   image: python:3.12-slim
-  rules:
-    - if: '$CI_PIPELINE_SOURCE == "schedule"'
-    - if: '$CI_PIPELINE_SOURCE == "web"'
-  resource_group: servicehealth-sync   # verhindert überlappende Läufe
   timeout: 10m
   before_script:
     - pip install -r requirements.txt
@@ -30,3 +27,26 @@ sync-service-health:
     paths:
       - state.json
     expire_in: 90 days
+
+# Branch "main" -> Environment "test".
+# Läuft per Pipeline-Schedule (CI/CD -> Schedules, Ziel-Branch main) oder manuell über "Run pipeline".
+# Der Jobname bleibt unverändert, damit der bisherige Zustand aus main weiter gefunden wird.
+sync-service-health:
+  extends: .sync-service-health
+  environment:
+    name: test
+  resource_group: servicehealth-sync-test   # verhindert überlappende Läufe
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "main" && $CI_PIPELINE_SOURCE == "schedule"'
+    - if: '$CI_COMMIT_BRANCH == "main" && $CI_PIPELINE_SOURCE == "web"'
+
+# Branch "production" -> Environment "production".
+# Schedule mit Ziel-Branch production anlegen.
+sync-service-health-production:
+  extends: .sync-service-health
+  environment:
+    name: production
+  resource_group: servicehealth-sync-production
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "production" && $CI_PIPELINE_SOURCE == "schedule"'
+    - if: '$CI_COMMIT_BRANCH == "production" && $CI_PIPELINE_SOURCE == "web"'

@@ -66,6 +66,31 @@ geschlossen. Offene Advisories mit Enddatum in der Zukunft merkt sich der Job in
 Enddatum, auch wenn Azure sie nicht mehr liefert. Ein Platzhalter-Datum (`0001-01-01`) wird ignoriert.
 Alle anderen Event-Typen (z. B. `ServiceIssue`) werden nur über Microsofts Status geschlossen.
 
+## Umgebungen: Test und Produktion
+Die Pipeline wählt das GitLab-Environment anhand des Branches. So lassen sich die ServiceNow-Testinstanz und die
+Produktionsinstanz über den Variablen-Scope trennen:
+
+| Branch | Job | Environment | Schedule-Ziel-Branch |
+|---|---|---|---|
+| `main` | `sync-service-health` | `test` | `main` |
+| `production` | `sync-service-health-production` | `production` | `production` |
+
+Der Sync läuft nur per Pipeline-Schedule oder manuell (*Run pipeline*) auf diesen beiden Branches. Der Test-Job
+(`unittest`) läuft bei jedem Push und Merge Request.
+
+Einrichtung in GitLab:
+1. Branch `production` anlegen (z. B. von `main`) und als *protected* schützen.
+2. Unter *Settings → CI/CD → Variables* die ServiceNow-Variablen je Umgebung anlegen, jeweils mit *Environment scope*
+   `test` bzw. `production`: `SERVICENOW_INSTANCE`, `SERVICENOW_SOURCE`, `SERVICENOW_CONNECTOR_SYS_ID`, `SERVICENOW_TOKEN`.
+   Die Produktionswerte zusätzlich als *Protected* und *Masked* markieren.
+3. Gemeinsame Variablen (z. B. `AZURE_*`) mit dem Scope `*` (alle Umgebungen) lassen.
+   Soll auch Azure getrennt sein, diese ebenfalls je Umgebung anlegen.
+4. Je Branch einen Schedule anlegen (*CI/CD → Schedules*, Ziel-Branch `main` bzw. `production`).
+
+Der Zustand (`state.json`) wird pro Branch und Job aus dem Artifact des letzten erfolgreichen Laufs geholt.
+Test und Produktion haben daher getrennte Zustände. Der erste Lauf auf `production` startet ohne Zustand und
+sendet alle Events der letzten `LOOKBACK_DAYS`.
+
 ## Konfiguration (Umgebungsvariablen / GitLab CI/CD-Variablen, Secrets als *masked*)
 | Variable | Bedeutung |
 |---|---|
